@@ -26,6 +26,9 @@ setup() {
   mkdir -p "$DIST/.claude-plugin"
   cp "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.claude-plugin/plugin.json" "$DIST/.claude-plugin/"
   cp "$REPO_ROOT/plugin.json" "$REPO_ROOT/.gitattributes" "$REPO_ROOT/.gitignore" "$DIST/"
+  # The real manifests carry the last published version; the fixture
+  # starts from "nothing published yet".
+  set_dist_versions 0.0.0
   git -C "$DIST" add -A
   git -C "$DIST" commit -q -m init
 }
