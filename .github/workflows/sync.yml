@@ -1,0 +1,114 @@
+# Publishes prompt-me's main as the next 0.0.N release of this marketplace.
+# Design: docs/superpowers/specs/2026-10-30-prompt-me-sync-pipeline-design.md
+name: Sync prompt-me
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One run at a time. A newer waiting run replaces an older waiting one,
+# which is fine: each run publishes prompt-me as it is when it starts.
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        id: dist
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          path: dist
+          fetch-depth: 0
+          fetch-tags: true
+          # Credentials stay: the push step needs them.
+
+      - name: Check out prompt-me
+        id: source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: franks-ai-skills/prompt-me
+          ref: main
+          path: source
+          persist-credentials: false
+
+      # Pushes made with GITHUB_TOKEN start no other workflow, so the
+      # release commit gets no Test run of its own.
+      - name: Test the scripts
+        id: tests
+        working-directory: dist
+        run: |
+          bash tests/sync_test.sh
+          bash tests/release_test.sh
+
+      # Repairs the release of the version already on main, in case an
+      # earlier run pushed it but failed to create its release. Without
+      # this, a later source change would publish the next version and
+      # leave the earlier release missing for good.
+      - name: Check current release
+        id: current
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh "$(jq -r .version plugin.json)"
+
+      - name: Sync
+        id: sync
+        working-directory: dist
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          scripts/sync.sh ../source
+
+      - name: Push commit and tag
+        id: push
+        if: steps.sync.outputs.changed == 'true'
+        working-directory: dist
+        env:
+          VERSION: ${{ steps.sync.outputs.version }}
+        run: |
+          [[ $VERSION =~ ^0\.0\.[0-9]+$ ]] || { echo "invalid version: $VERSION" >&2; exit 1; }
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
+
+      - name: Create release
+        id: release
+        if: steps.push.outcome == 'success'
+        working-directory: dist
+        env:
+          VERSION: ${{ steps.sync.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ $VERSION =~ ^0\.0\.[0-9]+$ ]] || { echo "invalid version: $VERSION" >&2; exit 1; }
+          scripts/release.sh "$VERSION"
+
+      - name: Summary
+        if: always()
+        env:
+          DIST: ${{ steps.dist.outcome }}
+          SOURCE: ${{ steps.source.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          CURRENT: ${{ steps.current.outcome }}
+          SYNC: ${{ steps.sync.outcome }}
+          CHANGED: ${{ steps.sync.outputs.changed }}
+          VERSION: ${{ steps.sync.outputs.version }}
+          PUSH: ${{ steps.push.outcome }}
+          RELEASE: ${{ steps.release.outcome }}
+        run: |
+          sha=unknown
+          if [ "$SOURCE" = success ]; then sha=$(git -C source rev-parse --short=7 HEAD); fi
+          if [ "$DIST" != success ]; then msg="Failed at checkout of this repository"
+          elif [ "$SOURCE" != success ]; then msg="Failed at checkout of prompt-me"
+          elif [ "$TESTS" != success ]; then msg="Failed at tests"
+          elif [ "$CURRENT" != success ]; then msg="Failed at the release check of the version on main; see that step's log"
+          elif [ "$SYNC" != success ]; then msg="Failed at sync"
+          elif [ "$CHANGED" = true ] && [ "$PUSH" != success ]; then msg="Failed at push: nothing published"
+          elif [ "$CHANGED" = true ] && [ "$RELEASE" != success ]; then msg="Failed at release: v$VERSION pushed, but its release was not created; see the release step's log"
+          elif [ "$CHANGED" = true ]; then msg="Published v$VERSION from prompt-me $sha"
+          else msg="No change: still v$VERSION (prompt-me $sha)"
+          fi
+          echo "$msg" >> "$GITHUB_STEP_SUMMARY"

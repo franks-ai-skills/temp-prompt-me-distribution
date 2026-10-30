@@ -1,0 +1,18 @@
+{
+  "name": "prompt-me",
+  "version": "0.0.0",
+  "description": "Drafts a well-defined prompt from your request instead of carrying it out. Temporary builds from prompt-me's main branch.",
+  "license": "AGPL-3.0-only",
+  "repository": "https://github.com/franks-ai-skills/prompt-me",
+  "homepage": "https://github.com/franks-ai-skills/temp-prompt-me-distribution",
+  "author": {
+    "name": "franks-ai-skills",
+    "url": "https://github.com/franks-ai-skills"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "skills",
+    "prompt"
+  ]
+}

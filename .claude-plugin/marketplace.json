@@ -1,0 +1,20 @@
+{
+  "name": "temp-prompt-me-distribution",
+  "description": "Temporary marketplace for prompt-me builds from its main branch",
+  "owner": {
+    "name": "franks-ai-skills",
+    "url": "https://github.com/franks-ai-skills"
+  },
+  "plugins": [
+    {
+      "name": "prompt-me",
+      "source": "./",
+      "description": "Drafts a well-defined prompt from your request instead of carrying it out. Temporary builds from prompt-me's main branch.",
+      "category": "development",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      }
+    }
+  ]
+}
