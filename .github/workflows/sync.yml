@@ -46,6 +46,17 @@ jobs:
           bash tests/sync_test.sh
           bash tests/release_test.sh
 
+      # Repairs the release of the version already on main, in case an
+      # earlier run pushed it but failed to create its release. Without
+      # this, a later source change would publish the next version and
+      # leave the earlier release missing for good.
+      - name: Check current release
+        id: current
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/release.sh "$(jq -r .version plugin.json)"
+
       - name: Sync
         id: sync
         working-directory: dist
@@ -66,7 +77,7 @@ jobs:
 
       - name: Create release
         id: release
-        if: steps.sync.outcome == 'success' && (steps.sync.outputs.changed != 'true' || steps.push.outcome == 'success')
+        if: steps.push.outcome == 'success'
         working-directory: dist
         env:
           VERSION: ${{ steps.sync.outputs.version }}
@@ -81,6 +92,7 @@ jobs:
           DIST: ${{ steps.dist.outcome }}
           SOURCE: ${{ steps.source.outcome }}
           TESTS: ${{ steps.tests.outcome }}
+          CURRENT: ${{ steps.current.outcome }}
           SYNC: ${{ steps.sync.outcome }}
           CHANGED: ${{ steps.sync.outputs.changed }}
           VERSION: ${{ steps.sync.outputs.version }}
@@ -92,11 +104,11 @@ jobs:
           if [ "$DIST" != success ]; then msg="Failed at checkout of this repository"
           elif [ "$SOURCE" != success ]; then msg="Failed at checkout of prompt-me"
           elif [ "$TESTS" != success ]; then msg="Failed at tests"
+          elif [ "$CURRENT" != success ]; then msg="Failed at the release check of the version on main; see that step's log"
           elif [ "$SYNC" != success ]; then msg="Failed at sync"
           elif [ "$CHANGED" = true ] && [ "$PUSH" != success ]; then msg="Failed at push: nothing published"
-          elif [ "$CHANGED" = true ] && [ "$RELEASE" != success ]; then msg="Failed at release: v$VERSION pushed, release missing; the next run creates it"
+          elif [ "$CHANGED" = true ] && [ "$RELEASE" != success ]; then msg="Failed at release: v$VERSION pushed, but its release was not created; see the release step's log"
           elif [ "$CHANGED" = true ]; then msg="Published v$VERSION from prompt-me $sha"
-          elif [ "$RELEASE" != success ]; then msg="Failed at release check for v$VERSION"
           else msg="No change: still v$VERSION (prompt-me $sha)"
           fi
           echo "$msg" >> "$GITHUB_STEP_SUMMARY"

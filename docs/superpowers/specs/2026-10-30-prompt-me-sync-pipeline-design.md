@@ -184,9 +184,10 @@ and is published:
    404): it creates the release with the tag message as its notes. Any
    other error, for example authentication or network: it fails.
 
-Because it runs on every successful workflow run, a run that pushed but
-failed to create the release is repaired by the next run, even when
-that run finds no change.
+Every workflow run calls it for the version already on `main` before
+syncing. A run that pushed but failed to create its release is
+therefore repaired by the next run, whether or not that run publishes
+a newer version.
 
 ## `.github/workflows/sync.yml`
 
@@ -205,19 +206,21 @@ that run finds no change.
   3. Run `tests/sync_test.sh` and `tests/release_test.sh`. Pushes made
      with `GITHUB_TOKEN` do not start other workflows, so the release
      commit gets no test run of its own.
-  4. Set the git identity to `github-actions[bot]`.
-  5. Run `scripts/sync.sh ../source` in `dist/`.
+  4. Run `scripts/release.sh` for the version in `plugin.json`, so a
+     release that an earlier run failed to create is created now.
+  5. Set the git identity to `github-actions[bot]` and run
+     `scripts/sync.sh ../source` in `dist/`.
   6. If `changed=true`: pass the version through `env`, check it
      against `^0\.0\.[0-9]+$`, and run
      `git push --atomic origin HEAD:main "refs/tags/v$VERSION"`. The
      commit and the tag land together or not at all.
-  7. If sync succeeded and, when it changed something, the push
-     succeeded: run `scripts/release.sh "$VERSION"`.
+  7. If the push succeeded: run `scripts/release.sh "$VERSION"`.
   8. Always: write the outcome to the job summary. "Published v0.0.N
      from prompt-me <sha7>" only when push and release succeeded; "No
-     change: still v0.0.N" only when sync reported no change and the
-     release check succeeded; otherwise "Failed at <step>", with
-     "pushed, release missing" as its own case.
+     change: still v0.0.N" only when every step succeeded and sync
+     reported no change; otherwise "Failed at <step>", with "pushed,
+     but its release was not created" as its own case. The summary
+     names the failed step and does not guess its cause.
 - Third-party actions are pinned to commit SHAs, with the version in a
   comment.
 
@@ -234,7 +237,8 @@ carry no `Assisted-by` trailer, because no model writes them.
   rejected and the run fails. Nothing is published; a re-run starts
   from the new state.
 - The push succeeded but the release was not created: the summary says
-  so; the next run creates it.
+  so; the next run creates it in its first release check, unless the
+  cause persists (a draft release, missing permissions).
 - Branch or tag rulesets that require PRs, status checks or signed
   commits would reject the bot push. None is configured; the README
   states this.
