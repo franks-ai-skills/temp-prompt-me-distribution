@@ -184,4 +184,147 @@ test_relative_source_and_subdirectory() {
   assert_eq "0.0.1 0.0.1" "$(dist_versions)" "versions"
 }
 
+# assert_refused <reason>: the run failed with a sync: message naming the
+# reason and left the distribution repository as it was in $BEFORE.
+assert_refused() {
+  assert_eq 1 "$STATUS" "status"
+  case "$ERR" in
+    "sync: "*) ;;
+    *) fail "stderr does not start with 'sync: ': [$ERR]" ;;
+  esac
+  assert_contains "$ERR" "$1" "reason"
+  assert_eq "$BEFORE" "$(state)" "state"
+}
+
+fail_commits() {
+  printf '#!/bin/sh\nexit 1\n' > "$DIST/.git/hooks/pre-commit"
+  chmod 755 "$DIST/.git/hooks/pre-commit"
+}
+
+test_refuses_missing_argument() {
+  BEFORE=$(state)
+  run_sync
+  assert_refused "usage: scripts/sync.sh <prompt-me-checkout>"
+}
+
+test_refuses_source_not_checkout_root() {
+  BEFORE=$(state)
+  run_sync "$SRC/.agents"
+  assert_refused "root"
+  git init -q -b main "$TMP/other"
+  cp -R "$SRC" "$TMP/other/copy"
+  rm -rf "$TMP/other/copy/.git"
+  run_sync "$TMP/other/copy"
+  assert_refused "root"
+}
+
+test_refuses_missing_skill() {
+  git -C "$SRC" rm -q "$SKILL/SKILL.md"
+  src_commit "chore: drop skill"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "SKILL.md"
+}
+
+test_refuses_symlink_in_source() {
+  ln -s ../../../../README.md "$SRC/$SKILL/references/link"
+  src_commit "feat: add link"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "symlink"
+}
+
+test_refuses_symlinked_ancestor() {
+  mkdir -p "$SRC/real"
+  git -C "$SRC" mv .agents/skills real/skills
+  ln -s ../real/skills "$SRC/.agents/skills"
+  src_commit "chore: move skills behind a symlink"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "SKILL.md"
+}
+
+test_refuses_dirty_tree() {
+  echo dirty >> "$DIST/.gitignore"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "clean"
+}
+
+test_refuses_untracked_file() {
+  echo notes > "$DIST/notes.txt"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "clean"
+  assert_eq "?? notes.txt" "$(git -C "$DIST" status --porcelain)" "untracked file kept"
+}
+
+test_refuses_ignored_file_in_target() {
+  run_sync "$SRC"
+  : > "$DIST/skills/prompt-me/.DS_Store"
+  echo more >> "$SRC/$SKILL/SKILL.md"
+  src_commit "fix: change skill"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "ignored"
+  [ -e "$DIST/skills/prompt-me/.DS_Store" ] || fail "ignored file was deleted"
+}
+
+test_refuses_duplicate_marketplace_entry() {
+  local f=$DIST/.claude-plugin/marketplace.json
+  jq '.plugins += [.plugins[0]]' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  dist_commit "chore: duplicate entry"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "marketplace"
+}
+
+test_refuses_mismatched_versions() {
+  jq '.version = "0.0.3"' "$DIST/plugin.json" > "$TMP/p" && mv "$TMP/p" "$DIST/plugin.json"
+  dist_commit "chore: mismatch"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "version"
+}
+
+test_refuses_non_0_0_n_version() {
+  set_dist_versions 0.1.0
+  dist_commit "chore: 0.1.0"
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "0.0.N"
+}
+
+test_refuses_existing_next_tag() {
+  git -C "$DIST" tag v0.0.1
+  BEFORE=$(state)
+  run_sync "$SRC"
+  assert_refused "v0.0.1"
+}
+
+test_rollback_on_commit_failure() {
+  echo log > "$SRC/$SKILL/debug.log"
+  src_commit "feat: log file"
+  fail_commits
+  BEFORE=$(state)
+  run_sync "$SRC"
+  [ "$STATUS" -ne 0 ] || fail "status: expected failure"
+  assert_eq "$BEFORE" "$(state)" "state"
+  [ ! -e "$DIST/skills" ] || fail "skills/ left behind"
+}
+
+test_rollback_keeps_previous_release() {
+  run_sync "$SRC"
+  echo more >> "$SRC/$SKILL/SKILL.md"
+  echo extra > "$SRC/$SKILL/extra.md"
+  src_commit "fix: change skill"
+  fail_commits
+  BEFORE=$(state)
+  run_sync "$SRC"
+  [ "$STATUS" -ne 0 ] || fail "status: expected failure"
+  assert_eq "$BEFORE" "$(state)" "state"
+  assert_eq "0.0.1 0.0.1" "$(dist_versions)" "versions"
+  [ ! -e "$DIST/skills/prompt-me/extra.md" ] || fail "partial copy left behind"
+}
+
 run_tests "$@"
