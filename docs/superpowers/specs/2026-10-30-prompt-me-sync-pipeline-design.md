@@ -117,9 +117,13 @@ Installation:
 - Codex: `codex plugin marketplace add franks-ai-skills/temp-prompt-me-distribution`,
   then `codex plugin add prompt-me@temp-prompt-me-distribution`.
 
-Updating: `/plugin marketplace update temp-prompt-me-distribution` in
-Claude Code; `codex plugin marketplace upgrade temp-prompt-me-distribution`
-in Codex.
+Updating: refreshing the marketplace leaves the installed plugin at
+its old version, so each CLI needs two commands. Claude Code:
+`claude plugin marketplace update temp-prompt-me-distribution`, then
+`claude plugin update prompt-me@temp-prompt-me-distribution`. Codex:
+`codex plugin marketplace upgrade temp-prompt-me-distribution`, then
+`codex plugin add prompt-me@temp-prompt-me-distribution`. The new
+version takes effect in a new session.
 
 The plugin keeps the name `prompt-me`. The marketplace part of the
 install ID keeps it apart from the future official plugin.
@@ -290,12 +294,17 @@ error fails.
 every push and pull request.
 
 `tests/smoke_install.sh` runs locally before the merge. With throwaway
-`CLAUDE_CONFIG_DIR` and `CODEX_HOME` folders, it uses a local copy of
-this repository at `0.0.1` as the marketplace: `claude plugin validate`,
+`CLAUDE_CONFIG_DIR` and `CODEX_HOME` folders, it publishes a local
+prompt-me checkout into a local copy of this repository and uses that
+copy as the marketplace: `claude plugin validate`,
 `claude plugin marketplace add`, `claude plugin install`; then
-`codex plugin marketplace add`, `codex plugin add`. It checks that
-`skills/prompt-me/SKILL.md` is in each installed copy. A local source
-does not show how hosted updates behave.
+`codex plugin marketplace add`, `codex plugin add`. It then publishes a
+changed skill as the next version and runs the update commands, except
+`codex plugin marketplace upgrade`, which refuses a local marketplace.
+After each step it checks that each CLI's cache holds
+`skills/prompt-me/SKILL.md` at the expected version and no `scripts/`
+or `tests/` folder. A local source does not show how hosted updates
+fetch the new commit.
 
 Manual end-to-end check after the merge:
 
