@@ -214,6 +214,13 @@ test_refuses_missing_argument() {
   assert_refused "usage: scripts/sync.sh <prompt-me-checkout>"
 }
 
+test_refuses_run_outside_git_checkout() {
+  mkdir "$TMP/elsewhere"
+  BEFORE=$(state)
+  RUN_DIR=$TMP/elsewhere run_sync "$SRC"
+  assert_refused "inside this repository"
+}
+
 test_refuses_source_not_checkout_root() {
   BEFORE=$(state)
   run_sync "$SRC/.agents"

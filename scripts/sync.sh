@@ -33,7 +33,8 @@ top=$(git -C "$src" rev-parse --show-toplevel 2> /dev/null) || top=
 if [ -z "$top" ] || [ "$(cd "$top" && pwd -P)" != "$src" ]; then
   die "source $1 is not the root of a git checkout"
 fi
-cd "$(git rev-parse --show-toplevel)"
+dist=$(git rev-parse --show-toplevel 2> /dev/null) || die "run sync.sh inside this repository"
+cd "$dist"
 
 # Resolve the source commit once; every later source read uses $sha.
 sha=$(git -C "$src" rev-parse --verify -q "HEAD^{commit}") || die "source $1 has no commit"
