@@ -71,10 +71,12 @@ Rejected alternatives:
 ```
 temp-prompt-me-distribution/
 ├── .claude-plugin/
-│   ├── marketplace.json   # marketplace "temp-prompt-me-distribution", plugin "prompt-me", source "./"
-│   └── plugin.json        # Claude Code plugin manifest
-├── plugin.json            # Agent Plugins schema manifest, read by Codex
-├── skills/prompt-me/      # written by the pipeline only
+│   └── marketplace.json   # marketplace "temp-prompt-me-distribution", plugin "prompt-me", source "./plugins/prompt-me"
+├── plugins/prompt-me/     # the plugin root: all that an install copies
+│   ├── .claude-plugin/
+│   │   └── plugin.json    # Claude Code plugin manifest
+│   ├── plugin.json        # Agent Plugins schema manifest, read by Codex
+│   └── skills/prompt-me/  # written by the pipeline only
 ├── scripts/sync.sh
 ├── scripts/release.sh
 ├── tests/sync_test.sh
@@ -85,19 +87,23 @@ temp-prompt-me-distribution/
 └── README.md, LICENSE, .gitignore, .gitattributes, .editorconfig
 ```
 
-The layout follows the harness-forge repository, which serves both
-Claude Code and Codex from `.claude-plugin/marketplace.json` and a root
-`plugin.json`. Codex reads `.claude-plugin/marketplace.json` as a
+The manifests follow the harness-forge repository, which serves both
+Claude Code and Codex from `.claude-plugin/marketplace.json` and a
+`plugin.json` beside `.claude-plugin/plugin.json`. The plugin has its
+own folder because an install copies the whole plugin root: with
+source `"./"`, every install also copied the docs, tests, scripts and
+workflows. Up to v0.0.1 the plugin was the repository root. Codex reads `.claude-plugin/marketplace.json` as a
 legacy-compatible marketplace source. `tests/smoke_install.sh` checks
 that both CLIs install the plugin from this layout before the first
 release; if one does not, the layout is fixed before the merge.
 
-`.gitattributes` gets `skills/prompt-me/** -text` after its
+`.gitattributes` gets `plugins/prompt-me/skills/prompt-me/** -text` after its
 `* text=auto eol=lf` line, so git applies no line-ending conversion to
 the published skill.
 
-The pipeline changes only `skills/prompt-me/` and the `version` field
-of `.claude-plugin/plugin.json` and `plugin.json`. Both always hold the
+The pipeline changes only `plugins/prompt-me/skills/prompt-me/` and
+the `version` field of the plugin's `.claude-plugin/plugin.json` and
+`plugin.json`. Both always hold the
 same value. Everything else is maintained by hand.
 
 The manifests are committed once by hand with version `0.0.0` and no
@@ -132,21 +138,21 @@ inside this repository. Requires `bash` 3.2 or later, `git`, `jq`,
    - `<sha>:.agents/skills/prompt-me/SKILL.md` exists.
    - The source skill tree contains no symlink (mode `120000`) and no
      submodule (mode `160000`).
-   - This repository's working tree is clean, and `skills/prompt-me/`
+   - This repository's working tree is clean, and `plugins/prompt-me/skills/prompt-me/`
      contains no untracked or ignored file.
    - `marketplace.json` has exactly one `prompt-me` entry.
    - The two plugin manifests hold the same version, in the form
      `0.0.N`.
    - The tag `v0.0.N+1` does not exist yet.
-2. **Detect changes.** If `HEAD:skills/prompt-me` has the same tree ID
+2. **Detect changes.** If `HEAD:plugins/prompt-me/skills/prompt-me` has the same tree ID
    as the source skill folder, it prints
    `no change: still v0.0.N (prompt-me <sha7>)` and exits with
    status 0. Nothing has been written at this point.
 3. **Copy.** It extracts the skill from the source commit with
    `git archive` into a temporary folder (umask `022`), replaces
-   `skills/prompt-me/` with it and stages it with `git add -A --force`,
+   `plugins/prompt-me/skills/prompt-me/` with it and stages it with `git add -A --force`,
    so the destination `.gitignore` cannot drop a committed file.
-4. **Verify.** The staged `skills/prompt-me/` must have the source
+4. **Verify.** The staged `plugins/prompt-me/skills/prompt-me/` must have the source
    tree ID; otherwise the script fails.
 5. **Bump.** It sets `version` in both plugin manifests to `0.0.N+1`.
 6. **Commit and tag.** It commits with the subject
@@ -162,7 +168,7 @@ inside this repository. Requires `bash` 3.2 or later, `git`, `jq`,
 step fails. It deletes `v0.0.N+1` only if this run created it and it
 still points to this run's commit. It moves `HEAD` back with
 `git reset --soft` only if `HEAD` is still this run's commit. It
-deletes `skills/prompt-me/` and restores it and both manifests from the
+deletes `plugins/prompt-me/skills/prompt-me/` and restores it and both manifests from the
 original commit, so partially copied files go too. The script then
 exits with the original failure status. The trap is disarmed after
 success. Local edits made by someone else during the run cannot be told
@@ -178,7 +184,8 @@ and is published:
 1. It refuses a version not of the form `0.0.N`, and does nothing for
    `0.0.0`.
 2. It refuses unless `v<version>` exists as an annotated tag whose
-   commit has `<version>` in `plugin.json`.
+   commit has `<version>` in `plugins/prompt-me/plugin.json`, or in
+   the root `plugin.json` for tags up to v0.0.1.
 3. It looks the release up through the GitHub API. Found and
    published: it exits 0. Found as a draft: it fails. Not found (HTTP
    404): it creates the release with the tag message as its notes. Any
@@ -206,7 +213,7 @@ a newer version.
   3. Run `tests/sync_test.sh` and `tests/release_test.sh`. Pushes made
      with `GITHUB_TOKEN` do not start other workflows, so the release
      commit gets no test run of its own.
-  4. Run `scripts/release.sh` for the version in `plugin.json`, so a
+  4. Run `scripts/release.sh` for the version in `plugins/prompt-me/plugin.json`, so a
      release that an earlier run failed to create is created now.
   5. Set the git identity to `github-actions[bot]` and run
      `scripts/sync.sh ../source` in `dist/`.
@@ -267,7 +274,7 @@ tested with a stub `gh` placed first on `PATH`.
 - Refusals that change nothing: missing argument, source not a checkout
   root, missing `SKILL.md`, a symlink in the source skill, a dirty or
   untracked destination tree, an ignored file under
-  `skills/prompt-me/`, a second `prompt-me` marketplace entry,
+  `plugins/prompt-me/skills/prompt-me/`, a second `prompt-me` marketplace entry,
   mismatched or non-`0.0.N` versions, an existing next tag.
 - Rollback: a failing `pre-commit` hook, with an ignored file name in
   the source, leaves `HEAD`, tags and the working tree (ignored files

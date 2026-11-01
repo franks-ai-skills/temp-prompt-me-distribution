@@ -26,7 +26,12 @@ fi
 
 type=$(git cat-file -t "refs/tags/$tag" 2> /dev/null) || die "tag $tag does not exist"
 [ "$type" = tag ] || die "tag $tag is not an annotated tag"
-tagged=$(git show "$tag^{commit}:plugin.json" 2> /dev/null | jq -r .version) || tagged=
+# Releases up to v0.0.1 kept the manifest at the repository root.
+tagged=
+for manifest in plugins/prompt-me/plugin.json plugin.json; do
+  if tagged=$(git show "$tag^{commit}:$manifest" 2> /dev/null | jq -r .version); then break; fi
+  tagged=
+done
 [ "$tagged" = "$version" ] || die "tag $tag points to a commit with version ${tagged:-none}, not $version"
 
 err=$(mktemp)

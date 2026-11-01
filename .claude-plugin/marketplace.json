@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "prompt-me",
-      "source": "./",
+      "source": "./plugins/prompt-me",
       "description": "Drafts a well-defined prompt from your request instead of carrying it out. Temporary builds from prompt-me's main branch.",
       "category": "development",
       "policy": {
