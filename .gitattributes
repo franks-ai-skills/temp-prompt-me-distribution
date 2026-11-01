@@ -2,4 +2,4 @@
 * text=auto eol=lf
 
 # The published skill must stay byte-identical to the prompt-me source
-skills/prompt-me/** -text
+plugins/prompt-me/skills/prompt-me/** -text

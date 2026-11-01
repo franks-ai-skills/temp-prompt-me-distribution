@@ -9,8 +9,9 @@ set -euo pipefail
 
 SOURCE_REPO=https://github.com/franks-ai-skills/prompt-me
 SOURCE_SKILL=.agents/skills/prompt-me
-TARGET=skills/prompt-me
-MANIFESTS=".claude-plugin/plugin.json plugin.json"
+PLUGIN=plugins/prompt-me
+TARGET=$PLUGIN/skills/prompt-me
+MANIFESTS="$PLUGIN/.claude-plugin/plugin.json $PLUGIN/plugin.json"
 VERSION_RE='^0\.0\.(0|[1-9][0-9]*)$'
 
 die() {
@@ -32,7 +33,8 @@ top=$(git -C "$src" rev-parse --show-toplevel 2> /dev/null) || top=
 if [ -z "$top" ] || [ "$(cd "$top" && pwd -P)" != "$src" ]; then
   die "source $1 is not the root of a git checkout"
 fi
-cd "$(git rev-parse --show-toplevel)"
+dist=$(git rev-parse --show-toplevel 2> /dev/null) || die "run sync.sh inside this repository"
+cd "$dist"
 
 # Resolve the source commit once; every later source read uses $sha.
 sha=$(git -C "$src" rev-parse --verify -q "HEAD^{commit}") || die "source $1 has no commit"
@@ -44,7 +46,9 @@ subject=$(git -C "$src" log -1 --format=%s "$sha")
 src_tree=$(git -C "$src" rev-parse "$sha:$SOURCE_SKILL")
 
 [ -z "$(git status --porcelain)" ] || die "working tree is not clean"
-[ -z "$(git status --porcelain --ignored -- "$TARGET")" ] || die "$TARGET contains ignored files"
+if [ -e "$TARGET" ] && [ -n "$(git status --porcelain --ignored -- "$TARGET")" ]; then
+  die "$TARGET contains ignored files"
+fi
 
 entries=$(jq '[.plugins[] | select(.name == "prompt-me")] | length' .claude-plugin/marketplace.json)
 [ "$entries" = 1 ] || die "marketplace.json must list prompt-me exactly once, found $entries"

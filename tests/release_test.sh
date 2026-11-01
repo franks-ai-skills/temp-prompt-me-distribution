@@ -33,9 +33,13 @@ EOF
   git -C "$REPO" tag -a v0.0.1 -m "release message"
 }
 
+# commit_version <version> [manifest]: commits a release with the
+# version in the manifest at the current layout's path, or at [manifest].
 commit_version() {
-  echo "{\"version\": \"$1\"}" > "$REPO/plugin.json"
-  git -C "$REPO" add plugin.json
+  local manifest=${2:-plugins/prompt-me/plugin.json}
+  mkdir -p "$(dirname "$REPO/$manifest")"
+  echo "{\"version\": \"$1\"}" > "$REPO/$manifest"
+  git -C "$REPO" add "$manifest"
   git -C "$REPO" commit -q -m "chore(release): v$1"
 }
 
@@ -93,6 +97,15 @@ test_refuses_tag_with_other_version() {
   run_release 0.0.3
   assert_refused "0.0.3"
   assert_eq "" "$(gh_calls)" "gh calls"
+}
+
+test_accepts_tag_with_root_manifest() {
+  git -C "$REPO" rm -q plugins/prompt-me/plugin.json
+  commit_version 0.0.2 plugin.json
+  git -C "$REPO" tag -a v0.0.2 -m "release message"
+  STUB_GH_LOOKUP=published run_release 0.0.2
+  assert_eq 0 "$STATUS" "status ($ERR)"
+  assert_contains "$OUT" "release v0.0.2 exists" "message"
 }
 
 test_accepts_published_release() {

@@ -55,7 +55,7 @@ jobs:
         working-directory: dist
         env:
           GH_TOKEN: ${{ github.token }}
-        run: scripts/release.sh "$(jq -r .version plugin.json)"
+        run: scripts/release.sh "$(jq -r .version plugins/prompt-me/plugin.json)"
 
       - name: Sync
         id: sync

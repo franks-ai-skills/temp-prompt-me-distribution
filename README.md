@@ -20,8 +20,23 @@ codex plugin add prompt-me@temp-prompt-me-distribution
 
 ## Update
 
-- Claude Code: `/plugin marketplace update temp-prompt-me-distribution`
-- Codex: `codex plugin marketplace upgrade temp-prompt-me-distribution`
+Refreshing the marketplace alone leaves the installed plugin at its old version. Refresh it, then update the plugin.
+
+Claude Code, in a terminal:
+
+```
+claude plugin marketplace update temp-prompt-me-distribution
+claude plugin update prompt-me@temp-prompt-me-distribution
+```
+
+Codex:
+
+```
+codex plugin marketplace upgrade temp-prompt-me-distribution
+codex plugin add prompt-me@temp-prompt-me-distribution
+```
+
+The new version takes effect in a new session.
 
 ## Versions
 

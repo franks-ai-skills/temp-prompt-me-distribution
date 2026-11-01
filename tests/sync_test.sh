@@ -7,6 +7,8 @@
 
 SOURCE_SUBJECT='feat: distinctive source subject'
 SKILL=.agents/skills/prompt-me
+PLUGIN=plugins/prompt-me
+TARGET=$PLUGIN/skills/prompt-me
 
 setup() {
   TMP=$(mktemp -d)
@@ -23,9 +25,11 @@ setup() {
   git -C "$SRC" commit -q -m "$SOURCE_SUBJECT"
 
   git init -q -b main "$DIST"
-  mkdir -p "$DIST/.claude-plugin"
-  cp "$REPO_ROOT/.claude-plugin/marketplace.json" "$REPO_ROOT/.claude-plugin/plugin.json" "$DIST/.claude-plugin/"
-  cp "$REPO_ROOT/plugin.json" "$REPO_ROOT/.gitattributes" "$REPO_ROOT/.gitignore" "$DIST/"
+  mkdir -p "$DIST/.claude-plugin" "$DIST/$PLUGIN/.claude-plugin"
+  cp "$REPO_ROOT/.claude-plugin/marketplace.json" "$DIST/.claude-plugin/"
+  cp "$REPO_ROOT/$PLUGIN/.claude-plugin/plugin.json" "$DIST/$PLUGIN/.claude-plugin/"
+  cp "$REPO_ROOT/$PLUGIN/plugin.json" "$DIST/$PLUGIN/"
+  cp "$REPO_ROOT/.gitattributes" "$REPO_ROOT/.gitignore" "$DIST/"
   # The real manifests carry the last published version; the fixture
   # starts from "nothing published yet".
   set_dist_versions 0.0.0
@@ -53,18 +57,18 @@ dist_commit() {
 
 set_dist_versions() {
   local f
-  for f in "$DIST/.claude-plugin/plugin.json" "$DIST/plugin.json"; do
+  for f in "$DIST/$PLUGIN/.claude-plugin/plugin.json" "$DIST/$PLUGIN/plugin.json"; do
     jq --arg v "$1" '.version = $v' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
   done
 }
 
 dist_versions() {
-  echo "$(jq -r .version "$DIST/.claude-plugin/plugin.json") $(jq -r .version "$DIST/plugin.json")"
+  echo "$(jq -r .version "$DIST/$PLUGIN/.claude-plugin/plugin.json") $(jq -r .version "$DIST/$PLUGIN/plugin.json")"
 }
 
 src_sha() { git -C "$SRC" rev-parse HEAD; }
 src_tree() { git -C "$SRC" rev-parse "HEAD:$SKILL"; }
-dist_tree() { git -C "$DIST" rev-parse HEAD:skills/prompt-me; }
+dist_tree() { git -C "$DIST" rev-parse "HEAD:$TARGET"; }
 dist_tags() { git -C "$DIST" tag -l | tr '\n' ' ' | sed 's/ $//'; }
 
 # state: everything a refused or no-change run must leave untouched.
@@ -131,7 +135,7 @@ test_deleted_file_disappears() {
   run_sync "$SRC"
   assert_eq 0 "$STATUS" "status ($ERR)"
   assert_eq "0.0.2 0.0.2" "$(dist_versions)" "versions"
-  [ ! -e "$DIST/skills/prompt-me/references/requirements.md" ] || fail "deleted file still present"
+  [ ! -e "$DIST/$TARGET/references/requirements.md" ] || fail "deleted file still present"
   assert_eq "$(src_tree)" "$(dist_tree)" "published tree"
 }
 
@@ -146,9 +150,9 @@ test_special_files_published_unchanged() {
   run_sync "$SRC"
   assert_eq 0 "$STATUS" "status ($ERR)"
   assert_eq "$(src_tree)" "$(dist_tree)" "published tree"
-  assert_eq 100755 "$(git -C "$DIST" ls-files -s skills/prompt-me/scripts/run.sh | cut -c1-6)" "exec mode"
-  [ -f "$DIST/skills/prompt-me/debug.log" ] || fail "ignored name not published"
-  assert_eq "$(printf 'a\r\nb\r\n' | od -An -c)" "$(od -An -c < "$DIST/skills/prompt-me/crlf.md")" "crlf bytes"
+  assert_eq 100755 "$(git -C "$DIST" ls-files -s "$TARGET/scripts/run.sh" | cut -c1-6)" "exec mode"
+  [ -f "$DIST/$TARGET/debug.log" ] || fail "ignored name not published"
+  assert_eq "$(printf 'a\r\nb\r\n' | od -An -c)" "$(od -An -c < "$DIST/$TARGET/crlf.md")" "crlf bytes"
   run_sync "$SRC"
   assert_eq 0 "$STATUS" "rerun status ($ERR)"
   assert_contains "$OUT" "no change: still v0.0.1" "rerun message"
@@ -160,7 +164,7 @@ test_uncommitted_source_files_not_published() {
   run_sync "$SRC"
   assert_eq 0 "$STATUS" "status ($ERR)"
   assert_eq "$(src_tree)" "$(dist_tree)" "published tree"
-  [ ! -e "$DIST/skills/prompt-me/extra.md" ] || fail "untracked file published"
+  [ ! -e "$DIST/$TARGET/extra.md" ] || fail "untracked file published"
 }
 
 test_bump_is_numeric() {
@@ -208,6 +212,13 @@ test_refuses_missing_argument() {
   BEFORE=$(state)
   run_sync
   assert_refused "usage: scripts/sync.sh <prompt-me-checkout>"
+}
+
+test_refuses_run_outside_git_checkout() {
+  mkdir "$TMP/elsewhere"
+  BEFORE=$(state)
+  RUN_DIR=$TMP/elsewhere run_sync "$SRC"
+  assert_refused "inside this repository"
 }
 
 test_refuses_source_not_checkout_root() {
@@ -264,13 +275,13 @@ test_refuses_untracked_file() {
 
 test_refuses_ignored_file_in_target() {
   run_sync "$SRC"
-  : > "$DIST/skills/prompt-me/.DS_Store"
+  : > "$DIST/$TARGET/.DS_Store"
   echo more >> "$SRC/$SKILL/SKILL.md"
   src_commit "fix: change skill"
   BEFORE=$(state)
   run_sync "$SRC"
   assert_refused "ignored"
-  [ -e "$DIST/skills/prompt-me/.DS_Store" ] || fail "ignored file was deleted"
+  [ -e "$DIST/$TARGET/.DS_Store" ] || fail "ignored file was deleted"
 }
 
 test_refuses_duplicate_marketplace_entry() {
@@ -283,7 +294,7 @@ test_refuses_duplicate_marketplace_entry() {
 }
 
 test_refuses_mismatched_versions() {
-  jq '.version = "0.0.3"' "$DIST/plugin.json" > "$TMP/p" && mv "$TMP/p" "$DIST/plugin.json"
+  jq '.version = "0.0.3"' "$DIST/$PLUGIN/plugin.json" > "$TMP/p" && mv "$TMP/p" "$DIST/$PLUGIN/plugin.json"
   dist_commit "chore: mismatch"
   BEFORE=$(state)
   run_sync "$SRC"
@@ -313,7 +324,7 @@ test_rollback_on_commit_failure() {
   run_sync "$SRC"
   [ "$STATUS" -ne 0 ] || fail "status: expected failure"
   assert_eq "$BEFORE" "$(state)" "state"
-  [ ! -e "$DIST/skills" ] || fail "skills/ left behind"
+  [ ! -e "$DIST/$PLUGIN/skills" ] || fail "skills/ left behind"
 }
 
 test_rollback_keeps_previous_release() {
@@ -327,7 +338,7 @@ test_rollback_keeps_previous_release() {
   [ "$STATUS" -ne 0 ] || fail "status: expected failure"
   assert_eq "$BEFORE" "$(state)" "state"
   assert_eq "0.0.1 0.0.1" "$(dist_versions)" "versions"
-  [ ! -e "$DIST/skills/prompt-me/extra.md" ] || fail "partial copy left behind"
+  [ ! -e "$DIST/$TARGET/extra.md" ] || fail "partial copy left behind"
 }
 
 run_tests "$@"
